@@ -2,7 +2,7 @@
 
 ### El pipeline utiliza requirements.txt (que contiene rangos abiertos) y no el requirements.lock
 - Los steps Instalar dependencias en los jobs validar y publicar corren
-  "pip install -r requirements.txt". "requirements.txt" declara rangos abiertos,
+  "pip install -r requirements.txt". Este "requirements.txt" declara rangos abiertos,
   por ejemplo, "requests>=2.31", no versiones fijas. El repositorio si tiene un archivo
   requirements.lock con versiones exactas, pero el pipeline no lo usa.
 - El archivo del error es ".github/workflows/pipeline.yml", en las lineas 23-26
@@ -81,3 +81,64 @@ Corrigiendo ese defecto se puede demostrar una reducción medible.
 El proxy es la duracion total del pipeline: el mismo numero que ya se registro en
 linea-base.md (1m4s, 1m7s, 1m11s), medido de nuevo despues de corregir el defecto 2
 (cache de dependencias).
+
+## 4.1 Medición posterior
+
+Proxy declarado: duracion total del pipeline.
+
+- Antes de la intervención: 1m4s, 1m7s, 1m11s (promedio = 67s).
+- Después de la intervención: 1m19s, 1m29s, 1m17s (promedio = 82s).
+
+El proxy subio, no bajo: un incremento de aproximadamente 15 segundos.
+
+Esto no significa que el defecto 2 no se haya resuelto: el step "Instalar
+dependencias" si bajo notablemente al comparar ejecuciones consecutivas. Lo que
+subio el total fueron dos efectos nuevos introducidos al corregir los defectos 3 y 4:
+Primero, needs: validar obliga a que los jobs corran en secuencia en vez de en paralelo,
+sumando sus duraciones en vez de solaparse.
+Segundo, el nuevo step de verificación del quality gate depende de un servicio externo 
+(SonarCloud), cuyo tiempo de respuesta (43s observados) varia entre ejecuciones y 
+no se puede cachear. El proxy elegido mide el efecto agregado de todo el pipeline, y 
+ese agregado empeoro aunque el componente de instalación si mejoro.
+
+## 4.2 Justificacion de la version
+
+Version declarada: 1.3.0 (desde 1.2.0).
+
+Commits desde el tag v1.2.0:
+- feat(tarifas): agregar desglose de la tarifa calculada
+- fix(validaciones): colapsar espacios repetidos en el nombre del cliente
+- fix(tarifas): redondear el costo por peso a dos decimales
+- ci: pipeline de validacion y publicacion de artefacto
+- fix: pipeline sonar project key como constante y sonar org pasando a github
+  variable (dos commits)
+- fix: borrando archivo .DS_Store
+- fix: sonar project key
+
+## 4.3 Qué no se resolvio
+
+El defecto 2 solo cachea las dependencias de pip, pero no cachea el binario del
+Sonar Scanner CLI. En los logs de Analisis de calidad se ve que cada ejecucion
+descarga de nuevo el CLI completo (Installing Sonar Scanner CLI 8.1.0..., Downloading
+from https://binaries.sonarsource.com/...).
+
+Para resolverlo haria falta un step de actions/cache explicito, con una clave basada
+en la version del scanner, que guarde el directorio donde
+se descarga el binario entre ejecuciones --. Sin eso, parte del tiempo de "Analisis de calidad" seguira
+dependiendo de una descarga por red en cada corrida.
+
+## 4.4 Declaración de uso de IA generativa
+Se utilizo Claude pro, mediante los siguientes prompts
+
+1. Estoy trabajando en mi repositorio https://github.com/york55/INF384-lab2-20222232 que
+   utilicé para mi lab previo, necesito que detectes que errores pueden existir en el pipeline.yml
+   
+2. okey ahora necesito que resuelvas los conflictos que detectaste siguiendo las siguientes condiciones
+1 Las dependencias se instalan desde el archivo de bloqueo, no resolviendo versiones 2 Las dependencias se
+cachean entre ejecuciones 3 El pipeline se detiene si el análisis de calidad no cumple el quality gate 4
+El artifact publicado debe llamarse despachos-, solo desde main, y solo si la validación pasó
+
+3. Necesito que me generes una función nueva de al menos 15 líneas, con lógica real —condicionales, no un return fijo— y sin
+ninguna prueba que la cubra en un archivo existente de src/despachos/
+
+4. Como se podría solucionar la demora que existe en la parte de "Analisis de calidad" de mi pipeline en Validar?

@@ -81,3 +81,40 @@ def desglose(envio: Envio) -> dict[str, float]:
         "factor_zona": factor,
         "total": calcular(envio),
     }
+
+def recargo_temporada_alta(mes: int, envio: Envio) -> float:
+    """Calcula un recargo adicional durante los meses de alta demanda.
+
+    Diciembre y julio son los meses de mayor volumen por fiestas y
+    vacaciones. El recargo final depende de la zona, la urgencia y el
+    valor declarado del envio.
+    """
+    if mes not in (7, 12):
+        return 0.0
+
+    if mes == 12:
+        base = 0.10
+    else:
+        base = 0.05
+
+    if envio.zona in ZONAS_ALEJADAS:
+        base += 0.08
+    elif envio.zona == "lima_metropolitana":
+        base += 0.02
+    elif envio.zona in ("costa_norte", "costa_sur"):
+        base += 0.04
+    else:
+        base += 0.05
+
+    if envio.urgente and envio.valor_declarado > 500:
+        base += 0.20
+    elif envio.urgente:
+        base += 0.15
+    elif envio.valor_declarado > 500:
+        base += 0.03
+
+    if base > 0.35:
+        base = 0.35
+
+    recargo = calcular(envio) * base
+    return round(recargo, 2)
